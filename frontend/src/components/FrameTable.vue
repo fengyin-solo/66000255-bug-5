@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useCanBusStore } from '../store/canbus';
+import {
+  formatTimestamp,
+  formatHexId,
+  formatSignalValue,
+  SIGNAL_UNITS
+} from '../utils/frame-format';
 
 const store = useCanBusStore();
 const selectedFrameId = ref<string | null>(null);
@@ -12,15 +18,6 @@ const selectedFrame = computed(() => {
 
 function selectFrame(id: string) {
   selectedFrameId.value = selectedFrameId.value === id ? null : id;
-}
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + d.getMilliseconds().toString().padStart(3, '0');
-}
-
-function formatHexId(id: number): string {
-  return '0x' + id.toString(16).toUpperCase().padStart(3, '0');
 }
 
 function getSignalPercent(name: string, value: number): number {
@@ -48,14 +45,7 @@ function getSignalColor(name: string): string {
 }
 
 function getSignalUnit(name: string): string {
-  const units: Record<string, string> = {
-    EngineRPM: 'rpm',
-    VehicleSpeed: 'km/h',
-    CoolantTemp: '°C',
-    ThrottlePosition: '%',
-    EngineLoad: '%'
-  };
-  return units[name] || '';
+  return SIGNAL_UNITS[name] || '';
 }
 </script>
 
@@ -131,13 +121,18 @@ function getSignalUnit(name: string): string {
             <td class="px-3 py-1.5 text-gray-400">
               <span v-for="(val, key) in frame.decoded" :key="String(key)" class="inline-block mr-2">
                 <span class="text-gray-500">{{ key }}:</span>
-                <span class="text-yellow-300">{{ typeof val === 'number' ? val.toFixed(1) : val }}</span>
+                <span class="text-yellow-300">{{ formatSignalValue(val) }}</span>
               </span>
             </td>
           </tr>
           <tr v-if="store.filteredFrames.length === 0">
             <td colspan="6" class="px-3 py-8 text-center text-gray-500">
-              暂无数据 — 点击"开始捕获"以模拟接收CAN帧
+              <template v-if="store.frames.length === 0">
+                暂无数据 — 点击"开始捕获"以模拟接收CAN帧
+              </template>
+              <template v-else>
+                筛选条件"{{ store.filterText.trim() }}"未命中任何帧（共 {{ store.frames.length }} 条）
+              </template>
             </td>
           </tr>
         </tbody>
@@ -163,7 +158,7 @@ function getSignalUnit(name: string): string {
           <div class="flex justify-between items-center mb-1.5">
             <span class="text-sm text-gray-400">{{ name }}</span>
             <span class="text-sm font-bold text-gray-100">
-              {{ typeof value === 'number' ? value.toFixed(1) : value }} {{ getSignalUnit(String(name)) }}
+              {{ formatSignalValue(value as number) }} {{ getSignalUnit(String(name)) }}
             </span>
           </div>
           <div class="w-full bg-gray-700 rounded-full h-2">

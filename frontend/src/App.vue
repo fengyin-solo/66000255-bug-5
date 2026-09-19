@@ -10,15 +10,12 @@ function handleLoadDbc() {
   alert(`已加载 DBC 定义: ${store.dbcMessages.size} 条消息`);
 }
 
-function handleExport() {
-  const csv = store.exportFrames();
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `can_frames_${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+async function handleExport() {
+  try {
+    await store.exportFrames();
+  } catch {
+    // 错误信息已写入 store.exportMessage，由页面上的状态条展示并可重试
+  }
 }
 </script>
 
@@ -59,12 +56,45 @@ function handleExport() {
         </button>
         <button
           @click="handleExport"
-          class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded transition-colors border border-gray-600"
+          :disabled="store.exportState === 'working'"
+          class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-200 text-sm rounded transition-colors border border-gray-600"
         >
-          导出CSV
+          {{ store.exportState === 'working' ? '导出中…' : '导出CSV' }}
         </button>
       </div>
     </header>
+
+    <!-- Export status bar -->
+    <div
+      v-if="store.exportState !== 'idle'"
+      class="px-6 py-1.5 text-xs flex items-center justify-between shrink-0 border-b"
+      :class="{
+        'bg-cyan-950/60 border-cyan-800 text-cyan-300': store.exportState === 'working',
+        'bg-green-950/60 border-green-800 text-green-300': store.exportState === 'success',
+        'bg-red-950/60 border-red-800 text-red-300': store.exportState === 'error'
+      }"
+    >
+      <span>
+        <span v-if="store.exportState === 'working'" class="animate-pulse">● </span>
+        {{ store.exportMessage }}
+      </span>
+      <span class="flex items-center gap-3">
+        <button
+          v-if="store.exportState === 'error'"
+          @click="handleExport"
+          class="px-2 py-0.5 bg-red-800 hover:bg-red-700 text-white rounded font-medium"
+        >
+          重试导出
+        </button>
+        <button
+          v-if="store.exportState !== 'working'"
+          @click="store.resetExportStatus()"
+          class="text-gray-400 hover:text-gray-200"
+        >
+          ✕
+        </button>
+      </span>
+    </div>
 
     <!-- Main Area -->
     <main class="flex-1 flex overflow-hidden">

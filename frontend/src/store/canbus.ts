@@ -2,6 +2,12 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { CanFrame, DbcMessage, BusStats } from '../types';
 import { parseDbc, decodeCanFrame, DEFAULT_DBC_CONTENT } from '../utils/dbc-parser';
+import { buildCsv, computeBatchId } from '../utils/frame-format';
+import {
+  exportFrames as postExport,
+  ExportError,
+  type ExportResponse
+} from '../api/export';
 
 let frameIdCounter = 0;
 
@@ -13,6 +19,22 @@ export const useCanBusStore = defineStore('canbus', () => {
   const filterText = ref('');
   const isCapturing = ref(false);
   const pollInterval = ref<number | null>(null);
+
+  /** 导出状态：空闲 / 提交中（含重试） / 成功 / 失败可重试 */
+  const exportState = ref<'idle' | 'working' | 'success' | 'error'>('idle');
+  const exportMessage = ref('');
+  const lastExportFile = ref<ExportResponse | null>(null);
+
+  function notifyExport(attempt: number, maxAttempts: number) {
+    exportMessage.value = attempt === 1
+      ? '正在导出…'
+      : `接口暂时不可用，正在第 ${attempt - 1} 次重试（${attempt}/${maxAttempts}）…`;
+  }
+
+  function resetExportStatus() {
+    exportState.value = 'idle';
+    exportMessage.value = '';
+  }
 
   const busStats = ref<BusStats>({
     totalFrames: 0,
@@ -185,15 +207,43 @@ export const useCanBusStore = defineStore('canbus', () => {
     return decodeCanFrame(frame, msgDef);
   }
 
-  function exportFrames(): string {
-    const header = 'Timestamp,Direction,CAN_ID,DLC,Data,Decoded\n';
-    const rows = frames.value.map(f => {
-      const decodedStr = Object.entries(f.decoded)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; ');
-      return `${f.timestamp},${f.direction},0x${f.arbitrationId.toString(16).toUpperCase()},${f.dlc},"${f.data}","${decodedStr}"`;
-    }).join('\n');
-    return header + rows;
+  /**
+   * 导出当前列表中实际看到的帧（filteredFrames），保证：
+   * 1. 列表 / 详情面板 / 导出文件三处格式化一致（共用 frame-format）；
+   * 2. 空批次（含筛选命中 0 条）在文件中写明原因；
+   * 3. 同一批重复导出由后端追加序号，不互相覆盖；
+   * 4. 接口不可用时按指数退避重试，失败后保留错误状态供用户再次发起。
+   */
+  async function exportFrames(): Promise<ExportResponse> {
+    const batch = filteredFrames.value;
+    const csv = buildCsv(batch, frames.value.length, filterText.value);
+    const batchId = computeBatchId(batch, filterText.value);
+
+    exportState.value = 'working';
+    lastExportFile.value = null;
+    try {
+      const result = await postExport(
+        {
+          batchId,
+          filter: filterText.value.trim(),
+          totalFrames: batch.length,
+          content: csv
+        },
+        3,
+        notifyExport
+      );
+      lastExportFile.value = result;
+      exportState.value = 'success';
+      exportMessage.value = `已导出：${result.fileName}` +
+        (result.copy > 1 ? `（同一批次第 ${result.copy} 份，未覆盖此前文件）` : '');
+      return result;
+    } catch (err) {
+      exportState.value = 'error';
+      exportMessage.value = err instanceof ExportError
+        ? (err.retriable ? `${err.message}，请点击“重试导出”` : err.message)
+        : '导出失败，请重试';
+      throw err;
+    }
   }
 
   return {
@@ -206,6 +256,9 @@ export const useCanBusStore = defineStore('canbus', () => {
     isCapturing,
     filteredFrames,
     busLoadPercent,
+    exportState,
+    exportMessage,
+    lastExportFile,
     addFrame,
     clearFrames,
     loadMockDbc,
@@ -213,6 +266,7 @@ export const useCanBusStore = defineStore('canbus', () => {
     startCapture,
     stopCapture,
     decodeFrame,
+    resetExportStatus,
     exportFrames
   };
 });
