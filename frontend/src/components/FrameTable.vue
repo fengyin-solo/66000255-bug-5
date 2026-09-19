@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useCanBusStore } from '../store/canbus';
+import {
+  formatTimestamp,
+  formatHexId,
+  formatSignalValue,
+  getSignalUnit
+} from '../utils/frame-format';
 
 const store = useCanBusStore();
 const selectedFrameId = ref<string | null>(null);
@@ -12,15 +18,6 @@ const selectedFrame = computed(() => {
 
 function selectFrame(id: string) {
   selectedFrameId.value = selectedFrameId.value === id ? null : id;
-}
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + d.getMilliseconds().toString().padStart(3, '0');
-}
-
-function formatHexId(id: number): string {
-  return '0x' + id.toString(16).toUpperCase().padStart(3, '0');
 }
 
 function getSignalPercent(name: string, value: number): number {
@@ -45,17 +42,6 @@ function getSignalColor(name: string): string {
     EngineLoad: 'bg-purple-500'
   };
   return colors[name] || 'bg-cyan-500';
-}
-
-function getSignalUnit(name: string): string {
-  const units: Record<string, string> = {
-    EngineRPM: 'rpm',
-    VehicleSpeed: 'km/h',
-    CoolantTemp: '°C',
-    ThrottlePosition: '%',
-    EngineLoad: '%'
-  };
-  return units[name] || '';
 }
 </script>
 
@@ -131,7 +117,7 @@ function getSignalUnit(name: string): string {
             <td class="px-3 py-1.5 text-gray-400">
               <span v-for="(val, key) in frame.decoded" :key="String(key)" class="inline-block mr-2">
                 <span class="text-gray-500">{{ key }}:</span>
-                <span class="text-yellow-300">{{ typeof val === 'number' ? val.toFixed(1) : val }}</span>
+                <span class="text-yellow-300">{{ formatSignalValue(val) }}</span>
               </span>
             </td>
           </tr>
@@ -163,7 +149,7 @@ function getSignalUnit(name: string): string {
           <div class="flex justify-between items-center mb-1.5">
             <span class="text-sm text-gray-400">{{ name }}</span>
             <span class="text-sm font-bold text-gray-100">
-              {{ typeof value === 'number' ? value.toFixed(1) : value }} {{ getSignalUnit(String(name)) }}
+              {{ formatSignalValue(value) }} {{ getSignalUnit(String(name)) }}
             </span>
           </div>
           <div class="w-full bg-gray-700 rounded-full h-2">

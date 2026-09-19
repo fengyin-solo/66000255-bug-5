@@ -185,17 +185,6 @@ export const useCanBusStore = defineStore('canbus', () => {
     return decodeCanFrame(frame, msgDef);
   }
 
-  function exportFrames(): string {
-    const header = 'Timestamp,Direction,CAN_ID,DLC,Data,Decoded\n';
-    const rows = frames.value.map(f => {
-      const decodedStr = Object.entries(f.decoded)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; ');
-      return `${f.timestamp},${f.direction},0x${f.arbitrationId.toString(16).toUpperCase()},${f.dlc},"${f.data}","${decodedStr}"`;
-    }).join('\n');
-    return header + rows;
-  }
-
   return {
     frames,
     signals,
@@ -212,7 +201,6 @@ export const useCanBusStore = defineStore('canbus', () => {
     parseAndLoadDbc,
     startCapture,
     stopCapture,
-    decodeFrame,
-    exportFrames
+    decodeFrame
   };
 });
